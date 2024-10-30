@@ -1,0 +1,4 @@
+/dist/
+.gradle/
+.classpath
+.settings/
