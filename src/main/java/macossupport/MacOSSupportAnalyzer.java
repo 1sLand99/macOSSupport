@@ -132,7 +132,6 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					if (!((Register) resultObjects[0]).getName().equals("x1")) return null;
 					break;
 				}
-				// TODO: Add more checks below (just to be safe)
 				case 3: {
 					if (!mnemonic.equals("adrp")) return null;
 					if (inputObjects.length != 1) return null;
