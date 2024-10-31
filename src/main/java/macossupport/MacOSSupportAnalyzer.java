@@ -15,6 +15,8 @@
  */
 package macossupport;
 
+import java.util.Arrays;
+import java.util.stream.Stream;
 import java.util.ArrayList;
 
 import ghidra.app.services.AbstractAnalyzer;
@@ -133,15 +135,20 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					if (inputObjects.length != 2)
 						return null;
-					if (!(inputObjects[0] instanceof Register))
+					Register register = (Register) Arrays.stream(inputObjects)
+							.filter(obj -> obj instanceof Register)
+							.findFirst()
+							.orElse(null);
+					if (register == null || !register.getName().equals("x1"))
 						return null;
-					if (!(((Register) inputObjects[0]).getName().equals("x1")))
+
+					Scalar scalar = (Scalar) Arrays.stream(inputObjects)
+							.filter(obj -> obj instanceof Scalar)
+							.findFirst()
+							.orElse(null);
+					if (scalar == null || scalar.isSigned() == true)
 						return null;
-					if (!(inputObjects[1] instanceof Scalar))
-						return null;
-					if (((Scalar) inputObjects[1]).isSigned() == true)
-						return null;
-					selectorRawPointerAddress = selectorRawPointerAddress + ((Scalar) inputObjects[1]).getValue();
+					selectorRawPointerAddress = selectorRawPointerAddress + scalar.getValue();
 					if (resultObjects.length != 1)
 						return null;
 					if (!(resultObjects[0] instanceof Register))
