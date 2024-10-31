@@ -16,7 +16,6 @@
 package macossupport;
 
 import java.util.Arrays;
-import java.util.stream.Stream;
 import java.util.ArrayList;
 
 import ghidra.app.services.AbstractAnalyzer;
@@ -91,6 +90,9 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 		return actualAddress;
 	}
 
+	// In many ARM64 binaries on macOS, each `objc_msgSend` call is stubbed out into
+	// its own function. This function attempts to identify these functions and
+	// return the selector string that is passed to `objc_msgSend`.
 	private String objcMsgSendSelector(Function function, ArrayList<Address> objcMsgSendAddresses) {
 		long selectorRawPointerAddress = 0;
 		long objcMsgSendRawPointerAddress = 0;
@@ -112,9 +114,11 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 			Object[] inputObjects = instruction.getInputObjects();
 			Object[] resultObjects = instruction.getResultObjects();
 			switch (instructionIndex) {
+				// The first instruction loads a constant into x1.
 				case 1: {
 					if (!mnemonic.equals("adrp"))
 						return null;
+
 					if (inputObjects.length != 1)
 						return null;
 					if (!(inputObjects[0] instanceof Scalar))
@@ -122,6 +126,7 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					if (((Scalar) inputObjects[0]).isSigned() == true)
 						return null;
 					selectorRawPointerAddress = ((Scalar) inputObjects[0]).getValue();
+
 					if (resultObjects.length != 1)
 						return null;
 					if (!(resultObjects[0] instanceof Register))
@@ -130,11 +135,13 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					break;
 				}
+
+				// The second instruction loads the value at the address [x1 + offset] into x1,
+				// which loads the pointer to the selector string into x1.
 				case 2: {
 					if (!mnemonic.equals("ldr"))
 						return null;
-					if (inputObjects.length != 2)
-						return null;
+
 					Register register = (Register) Arrays.stream(inputObjects)
 							.filter(obj -> obj instanceof Register)
 							.findFirst()
@@ -149,6 +156,7 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					if (scalar == null || scalar.isSigned() == true)
 						return null;
 					selectorRawPointerAddress = selectorRawPointerAddress + scalar.getValue();
+
 					if (resultObjects.length != 1)
 						return null;
 					if (!(resultObjects[0] instanceof Register))
@@ -157,9 +165,12 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					break;
 				}
+
+				// The third instruction loads a constant into x17.
 				case 3: {
 					if (!mnemonic.equals("adrp"))
 						return null;
+
 					if (inputObjects.length != 1)
 						return null;
 					if (!(inputObjects[0] instanceof Scalar))
@@ -167,6 +178,7 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					if (((Scalar) inputObjects[0]).isSigned() == true)
 						return null;
 					objcMsgSendRawPointerAddress = ((Scalar) inputObjects[0]).getValue();
+
 					if (resultObjects.length != 1)
 						return null;
 					if (!(resultObjects[0] instanceof Register))
@@ -175,43 +187,55 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					break;
 				}
+
+				// The fourth instruction adds a constant to x17, which loads a
+				// pointer to the `objc_msgSend` function into x17.
 				case 4: {
 					if (!mnemonic.equals("add"))
 						return null;
-					if (inputObjects.length != 3)
+					// For some reason, Ghidra seems to include a second scalar with a value of 0
+					// in the input objects. To cover our bases, we'll sum all the scalar values.
+					long scalarSum = Arrays.stream(inputObjects)
+							.filter(obj -> obj instanceof Scalar)
+							.map(obj -> (Scalar) obj)
+							.filter(scalar -> !scalar.isSigned())
+							.mapToLong(Scalar::getValue)
+							.sum();
+					objcMsgSendRawPointerAddress = objcMsgSendRawPointerAddress + scalarSum;
+
+					Register inputRegister = (Register) Arrays.stream(inputObjects)
+							.filter(obj -> obj instanceof Register)
+							.findFirst()
+							.orElse(null);
+					if (inputRegister == null || !inputRegister.getName().equals("x17"))
 						return null;
-					if (!(inputObjects[0] instanceof Scalar))
+
+					// Ghidra includes many temporary registers in the result objects, but we only
+					// want the actual result register. We'll filter out the temporary register.
+					Register resultRegister = (Register) Arrays.stream(resultObjects)
+							.filter(obj -> obj instanceof Register)
+							.filter(register -> !((Register) register).getName().startsWith("tmp"))
+							.findFirst()
+							.orElse(null);
+					if (resultRegister == null || !resultRegister.getName().equals("x17"))
 						return null;
-					if (((Scalar) inputObjects[0]).isSigned() == true)
-						return null;
-					if (((Scalar) inputObjects[0]).getValue() != 0)
-						return null;
-					if (!(inputObjects[1] instanceof Scalar))
-						return null;
-					if (((Scalar) inputObjects[1]).isSigned() == true)
-						return null;
-					objcMsgSendRawPointerAddress = objcMsgSendRawPointerAddress + ((Scalar) inputObjects[1]).getValue();
-					if (!(inputObjects[2] instanceof Register))
-						return null;
-					if (!(((Register) inputObjects[2]).getName().equals("x17")))
-						return null;
-					if (resultObjects.length != 5)
-						return null;
-					if (!(resultObjects[4] instanceof Register))
-						return null;
-					if (!((Register) resultObjects[4]).getName().equals("x17"))
-						return null;
+
 					break;
 				}
+
+				// The fifth instruction loads the value at the address [x17] into x16,
+				// which loads the address of the `objc_msgSend` function into x16.
 				case 5: {
 					if (!mnemonic.equals("ldr"))
 						return null;
+
 					if (inputObjects.length != 1)
 						return null;
 					if (!(inputObjects[0] instanceof Register))
 						return null;
 					if (!(((Register) inputObjects[0]).getName().equals("x17")))
 						return null;
+
 					if (resultObjects.length != 1)
 						return null;
 					if (!(resultObjects[0] instanceof Register))
@@ -220,9 +244,14 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					break;
 				}
+
+				// The sixth instruction branches to the `objc_msgSend` function,
+				// using the address in x16. The selector string in x1 is used as
+				// the second argument to the `objc_msgSend` call.
 				case 6: {
 					if (!mnemonic.equals("braa"))
 						return null;
+
 					if (inputObjects.length != 1)
 						return null;
 					if (!(inputObjects[0] instanceof Register))
@@ -242,8 +271,11 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 			Program program = function.getProgram();
 			AddressSpace theSpace = function.getEntryPoint().getAddressSpace();
 			Memory memory = program.getMemory();
-			Address objcMsgSendActualAddress = rawPointerAddressToActualAddress(objcMsgSendRawPointerAddress, theSpace,
-					memory);
+			Address objcMsgSendActualAddress = rawPointerAddressToActualAddress(
+					objcMsgSendRawPointerAddress, theSpace, memory);
+
+			// Perform a final sanity check to ensure that x16 is actually pointing to
+			// `objc_msgSend`, and not some other function.
 			boolean isPointingToObjcMsgSend = false;
 			for (Address objcMsgSendAddress : objcMsgSendAddresses) {
 				if (objcMsgSendAddress.equals(objcMsgSendActualAddress))
@@ -251,6 +283,8 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 			}
 			if (!isPointingToObjcMsgSend)
 				return null;
+
+			// Parse the selector string from the pointer in x1.
 			Address selectorActualAddress = rawPointerAddressToActualAddress(selectorRawPointerAddress, theSpace,
 					memory);
 			StringBuilder selectorStringBuilder = new StringBuilder();
