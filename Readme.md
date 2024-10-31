@@ -28,3 +28,24 @@ Of course! Feel free to use this extension however you want. To install it:
 5. Navigate to the ZIP file and select it
 6. Click OK
 7. Close and reopen Ghidra as prompted
+
+
+## Can I contribute?
+
+Sure! Just note that this really requires the use of the [Eclipse IDE](https://eclipseide.org). I'm not really going to provide much support on how to use Eclipse for Ghidra extension development, other than to point you to official resources.
+
+Developing Ghidra extensions on Eclipse requires GhidraDev, and instructions on how to install GhidraDev into Eclipse are located *within* your installation of Ghidra (at lease on v11.2) at:
+
+```
+{Ghidra-Installation-Folder}/Extensions/Eclipse/GhidraDev/GhidraDev_README.html#ManualInstall
+```
+
+### Before Running
+
+Ghidra only supports loading built modules from `bin/main` in the project root. Unfortunately, it seems Eclipse defaults to `bin/default`, which will cause this extension to not be loaded by Ghidra when using the Run Configurations provided GhidraDev. To fix this, simply:
+
+1. Right-Click the project in Eclipse to open the context menu.
+2. Hover over the "Build Path" item to open the sub-menu and select "Configure Build Path".
+3. If not already selected, select the Source tab and change the "Default output folder" to: `{project-name}/bin/main`.
+
+I unfortunately have not found an easy way to distribute this with the project, so (for now) this step has to be done manually.
