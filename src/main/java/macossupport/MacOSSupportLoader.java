@@ -30,7 +30,7 @@ import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 import ghidra.app.util.opinion.MachoLoader;
 
-public class macOSSupportLoader extends MachoLoader {
+public class MacOSSupportLoader extends MachoLoader {
 	
 	public String getPreferredFileName(ByteProvider provider) {
 		String original = super.getPreferredFileName(provider);

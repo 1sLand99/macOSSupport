@@ -45,13 +45,13 @@ import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
-public class macOSSupportAnalyzer extends AbstractAnalyzer {
+public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 	
 	private static final String ANALYZER_NAME = "Rename objc_msgSend stubs";
 	private static final String FUNCTION_PREFIX_OPTION_NAME = "Function prefix";
 	private static final String DEFAULT_FUNCTION_PREFIX = "objc_msgSend_";
 
-	public macOSSupportAnalyzer() {
+	public MacOSSupportAnalyzer() {
 		super(
 				ANALYZER_NAME,
 				"This will rename any functions that only call `objc_msgSend` after the selector.",
