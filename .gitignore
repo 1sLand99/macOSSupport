@@ -2,3 +2,4 @@
 .gradle/
 .classpath
 .settings/
+.project
