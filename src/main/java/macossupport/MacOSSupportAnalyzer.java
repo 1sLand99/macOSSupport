@@ -107,6 +107,10 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 			return null;
 		Instruction instruction = (Instruction) entryPointCodeUnit;
 		int instructionIndex = 1;
+
+		// In some cases, the function uses one less instruction. We'll call this the
+		// "simpler version" and modify the detection logic accordingly.
+		boolean isSimplerVersion = false;
 		while (instructionIndex <= 6) {
 			if (instruction == null)
 				return null;
@@ -166,7 +170,7 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					break;
 				}
 
-				// The third instruction loads a constant into x17.
+				// The third instruction loads a constant into x17 or x16.
 				case 3: {
 					if (!mnemonic.equals("adrp"))
 						return null;
@@ -183,14 +187,25 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 						return null;
 					if (!(resultObjects[0] instanceof Register))
 						return null;
-					if (!((Register) resultObjects[0]).getName().equals("x17"))
+					String resultRegisterName = ((Register) resultObjects[0]).getName();
+					if (!resultRegisterName.equals("x17") && !resultRegisterName.equals("x16"))
 						return null;
+					if (resultRegisterName.equals("x16")) {
+						isSimplerVersion = true;
+						break;
+					}
 					break;
 				}
 
 				// The fourth instruction adds a constant to x17, which loads a
 				// pointer to the `objc_msgSend` function into x17.
+				//
+				// In simpler functions, this instruction is skipped, and the addition is done
+				// in the `ldr` instruction.
 				case 4: {
+					if (isSimplerVersion) {
+						break;
+					}
 					if (!mnemonic.equals("add"))
 						return null;
 					// For some reason, Ghidra seems to include a second scalar with a value of 0
@@ -225,16 +240,35 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 
 				// The fifth instruction loads the value at the address [x17] into x16,
 				// which loads the address of the `objc_msgSend` function into x16.
+				//
+				// In simpler functions, this is the fourth instruction and it operates only on
+				// x16, performing the addition (skipped above) and load in one step.
 				case 5: {
 					if (!mnemonic.equals("ldr"))
 						return null;
-
-					if (inputObjects.length != 1)
-						return null;
-					if (!(inputObjects[0] instanceof Register))
-						return null;
-					if (!(((Register) inputObjects[0]).getName().equals("x17")))
-						return null;
+					if (isSimplerVersion) {
+						// The simpler version combines the addition and load into one instruction.
+						Register inputRegister = (Register) Arrays.stream(inputObjects)
+								.filter(obj -> obj instanceof Register)
+								.findFirst()
+								.orElse(null);
+						if (!(inputRegister.getName().equals("x16")))
+							return null;
+						long scalarSum = Arrays.stream(inputObjects)
+								.filter(obj -> obj instanceof Scalar)
+								.map(obj -> (Scalar) obj)
+								.filter(scalar -> !scalar.isSigned())
+								.mapToLong(Scalar::getValue)
+								.sum();
+						objcMsgSendRawPointerAddress = objcMsgSendRawPointerAddress + scalarSum;
+					} else {
+						if (inputObjects.length != 1)
+							return null;
+						if (!(inputObjects[0] instanceof Register))
+							return null;
+						if (!(((Register) inputObjects[0]).getName().equals("x17")))
+							return null;
+					}
 
 					if (resultObjects.length != 1)
 						return null;
@@ -248,8 +282,15 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 				// The sixth instruction branches to the `objc_msgSend` function,
 				// using the address in x16. The selector string in x1 is used as
 				// the second argument to the `objc_msgSend` call.
+				//
+				// In simpler functions, this is the fifth instruction, but it is otherwise
+				// identical (see above for differences).
 				case 6: {
-					if (!mnemonic.equals("braa"))
+					// While we could be more specific here, as it appears that the actual
+					// implementations only use specific branch instructions, we'll try to
+					// capture the many branch instructions in ARM64.
+					// TODO: Is "starts with 'br'" too broad?
+					if (!mnemonic.startsWith("br"))
 						return null;
 
 					if (inputObjects.length != 1)
@@ -264,8 +305,19 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 					return null;
 			}
 
-			instructionIndex++;
-			instruction = instruction.getNext();
+			// In cases where the function is using the simpler version, the instruction
+			// index and the index of the actual instruction we're evaluating may be out
+			// of sync. While this isn't ideal, it lets us reuse the same logic for both
+			// the regular and simpler versions.
+
+			boolean isSkippingInstruction4 = isSimplerVersion && instructionIndex == 4;
+			if (!isSkippingInstruction4) {
+				// If we're skipping instruction 4, we don't want to get the next instruction as
+				// we haven't actually evaluated the current instruction.
+				instruction = instruction.getNext();
+			}
+			instructionIndex++; // We always increment the instruction index, because that's what the case
+								// statement is based on. TODO: Maybe handle this better?
 		}
 		try {
 			Program program = function.getProgram();
