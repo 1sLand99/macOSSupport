@@ -157,9 +157,14 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 							.filter(obj -> obj instanceof Scalar)
 							.findFirst()
 							.orElse(null);
-					if (scalar == null || scalar.isSigned() == true)
-						return null;
-					selectorRawPointerAddress = selectorRawPointerAddress + scalar.getValue();
+
+					long scalarValue = 0;
+
+					if (scalar != null) {
+						scalarValue = scalar.getValue();
+					}
+
+					selectorRawPointerAddress = selectorRawPointerAddress + scalarValue;
 
 					if (resultObjects.length != 1)
 						return null;
