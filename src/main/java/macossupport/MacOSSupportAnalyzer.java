@@ -49,10 +49,14 @@ import ghidra.util.task.TaskMonitor;
 public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 
 	private static final String ANALYZER_NAME = "Rename objc_msgSend stubs";
+
 	private static final String FUNCTION_PREFIX_OPTION_NAME = "Function prefix";
 	private static final String DEFAULT_FUNCTION_PREFIX = "objc_msgSend$";
+	private static final String FUNCTION_PREFIX_DESCRIPTION = "The prefix to append to the selector name before renaming the function after it.";
+
 	private static final String ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_OPTION_NAME = "Only rename default-named (FUN_*) functions";
 	private static final boolean DEFAULT_ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS = true;
+	private static final String ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_DESCRIPTION = "Only rename functions that are named with the default prefix (FUN_*)";
 
 	public MacOSSupportAnalyzer() {
 		super(
@@ -77,10 +81,10 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 	@Override
 	public void registerOptions(Options options, Program program) {
 		options.registerOption(FUNCTION_PREFIX_OPTION_NAME, OptionType.STRING_TYPE, DEFAULT_FUNCTION_PREFIX, null,
-				"The prefix to append to the selector name before renaming the function after it.");
+				FUNCTION_PREFIX_DESCRIPTION);
 		options.registerOption(ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_OPTION_NAME, OptionType.BOOLEAN_TYPE,
 				DEFAULT_ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS, null,
-				"Only rename functions that are named with the default prefix (FUN_*)");
+				ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_DESCRIPTION);
 	}
 
 	private Address rawPointerAddressToActualAddress(long pointerAddress, AddressSpace addressSpace, Memory memory)
