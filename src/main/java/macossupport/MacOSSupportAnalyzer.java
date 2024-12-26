@@ -50,7 +50,7 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 
 	private static final String ANALYZER_NAME = "Rename objc_msgSend stubs";
 	private static final String FUNCTION_PREFIX_OPTION_NAME = "Function prefix";
-	private static final String DEFAULT_FUNCTION_PREFIX = "objc_msgSend_";
+	private static final String DEFAULT_FUNCTION_PREFIX = "objc_msgSend$";
 
 	public MacOSSupportAnalyzer() {
 		super(
