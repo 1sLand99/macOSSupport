@@ -51,6 +51,8 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 	private static final String ANALYZER_NAME = "Rename objc_msgSend stubs";
 	private static final String FUNCTION_PREFIX_OPTION_NAME = "Function prefix";
 	private static final String DEFAULT_FUNCTION_PREFIX = "objc_msgSend$";
+	private static final String ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_OPTION_NAME = "Only rename default-named (FUN_*) functions";
+	private static final boolean DEFAULT_ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS = true;
 
 	public MacOSSupportAnalyzer() {
 		super(
@@ -76,6 +78,9 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 	public void registerOptions(Options options, Program program) {
 		options.registerOption(FUNCTION_PREFIX_OPTION_NAME, OptionType.STRING_TYPE, DEFAULT_FUNCTION_PREFIX, null,
 				"The prefix to append to the selector name before renaming the function after it.");
+		options.registerOption(ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_OPTION_NAME, OptionType.BOOLEAN_TYPE,
+				DEFAULT_ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS, null,
+				"Only rename functions that are named with the default prefix (FUN_*)");
 	}
 
 	private Address rawPointerAddressToActualAddress(long pointerAddress, AddressSpace addressSpace, Memory memory)
@@ -93,10 +98,12 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 	// In many ARM64 binaries on macOS, each `objc_msgSend` call is stubbed out into
 	// its own function. This function attempts to identify these functions and
 	// return the selector string that is passed to `objc_msgSend`.
-	private String objcMsgSendSelector(Function function, ArrayList<Address> objcMsgSendAddresses) {
+	private String objcMsgSendSelector(
+			Function function, ArrayList<Address> objcMsgSendAddresses,
+			boolean onlyRenameDefaultNamedFunctions) {
 		long selectorRawPointerAddress = 0;
 		long objcMsgSendRawPointerAddress = 0;
-		if (function.getName().startsWith("FUN_") != true)
+		if (function.getName().startsWith("FUN_") != true && onlyRenameDefaultNamedFunctions)
 			return null;
 		if (function.getParameterCount() != 0)
 			return null;
@@ -368,6 +375,12 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 				.getOptions(ANALYZER_NAME)
 				.getString(FUNCTION_PREFIX_OPTION_NAME, DEFAULT_FUNCTION_PREFIX);
 
+		boolean onlyRenameDefaultNamedFunctions = program
+				.getOptions("Analyzers")
+				.getOptions(ANALYZER_NAME)
+				.getBoolean(ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS_OPTION_NAME,
+						DEFAULT_ONLY_RENAME_DEFAULT_NAMED_FUNCTIONS);
+
 		SymbolTable symbolTable = program.getSymbolTable();
 		SymbolIterator symbols = symbolTable.getExternalSymbols("_objc_msgSend");
 		ArrayList<Address> objcMsgSendAddresses = new ArrayList<Address>();
@@ -380,7 +393,9 @@ public class MacOSSupportAnalyzer extends AbstractAnalyzer {
 		FunctionManager functionManager = program.getFunctionManager();
 		for (Function function : functionManager.getFunctionsNoStubs(true)) {
 			try {
-				String selectorString = objcMsgSendSelector(function, objcMsgSendAddresses);
+				String selectorString = objcMsgSendSelector(
+						function, objcMsgSendAddresses,
+						onlyRenameDefaultNamedFunctions);
 				if (selectorString == null)
 					continue;
 				if (selectorString.length() != 0)
